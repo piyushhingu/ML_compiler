@@ -33,11 +33,33 @@
 "nn.MaxPool2d"       { return MAXPOOL2D; }
 "nn.Linear"          { return LINEAR; }
 "return"             { return RETURN; }
+"nn.Softmax"         { return SOFTMAX; }
 
 "-"?[0-9]+           { yylval.sval = strdup(yytext); return INTEGER; }
 "-"?[0-9]+\.[0-9]+   { yylval.sval = strdup(yytext); return FLOAT; }
 \"[^\"]*\"           { yylval.sval = strdup(yytext); return STRING; }
-[a-zA-Z_][a-zA-Z0-9_]* { yylval.sval = strdup(yytext); return IDENTIFIER; }
+
+"F.MaxPool2d"        { return F_MAXPOOL2D; }
+"F.relu"             { return F_RELU; }
+"F.view"             { return F_VIEW; }
+
+[a-zA-Z_][a-zA-Z0-9_]* { 
+    // Special handling for F-style function calls
+    if (strcmp(yytext, "F") == 0) {
+        // Look ahead for specific function calls
+        char next_char = input();
+        unput(next_char);
+        if (next_char == '.') {
+            // Consume the dot
+            input();
+            char* func_name = strdup(yytext);
+            yylval.sval = func_name;
+            return IDENTIFIER;
+        }
+    }
+    yylval.sval = strdup(yytext); 
+    return IDENTIFIER; 
+}
 
 "*"                  { yylval.sval = strdup("*"); return MULTIPLY; }
 

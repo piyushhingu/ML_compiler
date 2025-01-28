@@ -79,7 +79,11 @@ extern int yydebug;
     INTEGER = 280,                 /* INTEGER  */
     FLOAT = 281,                   /* FLOAT  */
     STRING = 282,                  /* STRING  */
-    IDENTIFIER = 283               /* IDENTIFIER  */
+    IDENTIFIER = 283,              /* IDENTIFIER  */
+    F_MAXPOOL2D = 284,             /* F_MAXPOOL2D  */
+    F_RELU = 285,                  /* F_RELU  */
+    F_VIEW = 286,                  /* F_VIEW  */
+    SOFTMAX = 287                  /* SOFTMAX  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -95,7 +99,7 @@ union YYSTYPE
     float fval;  // for FLOAT tokens
     struct ASTNode* node;  // for AST nodes
 
-#line 99 "model_parser.tab.h"
+#line 103 "model_parser.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

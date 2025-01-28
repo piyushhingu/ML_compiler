@@ -22,20 +22,22 @@ ASTNode* ast_root = NULL;
 %token CLASS NN_MODULE DEF SUPER INIT SELF FORWARD EQUALS LPAREN RPAREN COLON COMMA DOT RESHAPE SEQUENTIAL CONV2D BATCHNORM2D RELU MAXPOOL2D LINEAR MULTIPLY RETURN
 %token <sval> INTEGER FLOAT
 %token <sval> STRING IDENTIFIER
+%token F_MAXPOOL2D F_RELU F_VIEW
+%token SOFTMAX
 
 // Precedence to resolve conflicts
-%left COMMA
-%left MULTIPLY
 %left DOT
+%precedence LPAREN
+%precedence RPAREN
 %precedence RESHAPE
 
 // Correct type declarations for non-terminals
 %type <node> program class_def methods method_definition method_body
-%type <node> statement expression method_call method_operation
+%type <node> statement expression method_call
 %type <node> layer_definition sequential_layer
 %type <node> constructor layers_definition layer_definition_full
 %type <node> sequential_layer_content
-
+%type <node> method_call_base
 %type <sval> class_name layer_name param_name method_name
 %type <sval> nested_layer_params layer_param_list layer_param
 %type <sval> param_list layer_args
@@ -43,6 +45,7 @@ ASTNode* ast_root = NULL;
 %type <sval> argument var method_params
 %type <sval> arguments
 %type <sval> layer_type
+%type <node> reshape_operation
 
 %%
 
@@ -208,6 +211,7 @@ method_definition:
 
 method_name:
     FORWARD { $$ = strdup("forward"); }
+    | RESHAPE { $$ = strdup("reshape"); }
     | IDENTIFIER { $$ = $1; }
     ;
 
@@ -236,7 +240,17 @@ method_body:
         free($2);
         $$ = create_node(NODE_STATEMENT, return_str);
     }
-    | RETURN expression { 
+    | RETURN method_call_base {
+        char* return_str = malloc(strlen($2->value) + 8);
+        sprintf(return_str, "return %s", $2->value);
+        $$ = create_node(NODE_STATEMENT, return_str);
+    }
+    | RETURN method_call {
+        char* return_str = malloc(strlen($2->value) + 8);
+        sprintf(return_str, "return %s", $2->value);
+        $$ = create_node(NODE_STATEMENT, return_str);
+    }
+    | RETURN reshape_operation {
         char* return_str = malloc(strlen($2->value) + 8);
         sprintf(return_str, "return %s", $2->value);
         $$ = create_node(NODE_STATEMENT, return_str);
@@ -266,7 +280,13 @@ var:
 
 expression:
     method_call { $$ = $1; }
-    | method_operation { $$ = $1; }
+    | method_call_base { $$ = $1; }
+    | reshape_operation { 
+        // Create an expression node from reshape operation
+        ASTNode* expr_node = create_node(NODE_EXPRESSION, $1->value);
+        add_child(expr_node, $1);
+        $$ = expr_node;
+    }
     ;
 
 method_call:
@@ -276,24 +296,51 @@ method_call:
         free($3);
         free($5);
         $$ = create_node(NODE_METHOD_CALL, temp);
+        free(temp);
     }
     ;
 
-method_operation:
+method_call_base:
     var DOT method_name LPAREN arguments RPAREN { 
         char* temp = malloc(strlen($1) + strlen($3) + strlen($5) + 4);
         sprintf(temp, "%s.%s(%s)", $1, $3, $5);
         free($1);
         free($3);
         free($5);
-        $$ = create_node(NODE_OPERATION, temp);
+        $$ = create_node(NODE_METHOD_CALL, temp);
+        free(temp);
     }
-    | var DOT RESHAPE LPAREN arguments RPAREN %prec RESHAPE { 
+    | F_MAXPOOL2D LPAREN arguments RPAREN {
+        char* temp = malloc(strlen($3) + 20);
+        sprintf(temp, "F.MaxPool2d(%s)", $3);
+        free($3);
+        $$ = create_node(NODE_METHOD_CALL, temp);
+        free(temp);
+    }
+    | F_RELU LPAREN arguments RPAREN {
+        char* temp = malloc(strlen($3) + 20);
+        sprintf(temp, "F.relu(%s)", $3);
+        free($3);
+        $$ = create_node(NODE_METHOD_CALL, temp);
+        free(temp);
+    }
+    | F_VIEW LPAREN arguments RPAREN {
+        char* temp = malloc(strlen($3) + 20);
+        sprintf(temp, "F.view(%s)", $3);
+        free($3);
+        $$ = create_node(NODE_METHOD_CALL, temp);
+        free(temp);
+    }
+    ;
+
+reshape_operation:
+    var DOT F_VIEW LPAREN arguments RPAREN { 
         char* temp = malloc(strlen($1) + strlen($5) + 10);
-        sprintf(temp, "%s.reshape(%s)", $1, $5);
+        sprintf(temp, "%s.view(%s)", $1, $5);
         free($1);
         free($5);
         $$ = create_node(NODE_OPERATION, temp);
+        free(temp);
     }
     ;
 
@@ -301,7 +348,26 @@ argument:
     numeric_literal { $$ = $1; }
     | STRING { $$ = $1; }
     | var { $$ = $1; }
-    | method_operation { $$ = $1; }
+    | method_call_base { 
+        // Handle nested method calls
+        $$ = $1->value ? strdup($1->value) : strdup("method_call");
+    }
+    | method_call {
+        // Handle method calls in arguments
+        $$ = $1->value ? strdup($1->value) : strdup("method_call");
+    }
+    | reshape_operation {
+        // Handle reshape operations in arguments
+        $$ = $1->value ? strdup($1->value) : strdup("reshape_operation");
+    }
+    | LPAREN argument COMMA argument RPAREN {
+        // Handle tuples like (2, 2)
+        char* temp = malloc(strlen($2) + strlen($4) + 4);
+        sprintf(temp, "(%s, %s)", $2, $4);
+        free($2);
+        free($4);
+        $$ = temp;
+    }
     | LPAREN argument RPAREN { $$ = $2; }  // Allow parenthesized arguments
     ;
 
@@ -360,6 +426,7 @@ layer_type:
     | RELU { $$ = strdup("nn.ReLU"); }
     | MAXPOOL2D { $$ = strdup("nn.MaxPool2d"); }
     | LINEAR { $$ = strdup("nn.Linear"); }
+    | SOFTMAX { $$ = strdup("nn.Softmax"); }
     ;
 
 layer_name:
